@@ -112,13 +112,13 @@ if uploaded_file is not None:
                 raw_counts[raw_name] = raw_counts.get(raw_name, 0) + 1
 
             # -----------------------------------------------------
-            # BOLT logic - has an explicit "missing" class, but it
-            # always includes 1 fixed hole that isn't a real bolt
-            # position. Always subtract exactly 1 from raw missing.
+            # BOLT logic - BOLT_Missing is the real, trusted missing
+            # count straight from detection (note: model's actual class
+            # name is "BOLT_Missing", not "BOLT_MISSING"). Present is
+            # derived from expected - missing.
             # -----------------------------------------------------
-            bolt_present = raw_counts.get("BOLT_P", 0)
-            bolt_missing_raw = raw_counts.get("BOLT_MISSING", 0)
-            bolt_missing = max(0, bolt_missing_raw - 1)
+            bolt_missing = raw_counts.get("BOLT_Missing", 0)
+            bolt_present = max(0, EXPECTED_COUNTS["bolt"] - bolt_missing)
 
             # -----------------------------------------------------
             # NUT logic - no "missing" class trained yet, so missing
