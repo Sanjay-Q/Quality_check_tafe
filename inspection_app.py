@@ -35,7 +35,7 @@ MODEL_PATH = "best.pt"
 CONF_THRESHOLD = 0.30
 
 EXPECTED_COUNTS = {
-    "bolt": 15,
+    "bolt": 17,
     "nut": 4,
     "breather": 1,
 }
