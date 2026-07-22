@@ -2,8 +2,8 @@
 Part Inspection App - Simple Version (No Login, No Cloud)
 --------------------------------------------------------------
 Select Site -> Select Case/Block -> Upload/Capture Photo ->
-Model Inspects -> User Confirms (Good / Wrong) -> Photo saved
-to a local folder on your computer.
+Model Inspects -> Report shown -> User Confirms (Good / Wrong) ->
+Photo saved to a local folder on your computer.
 
 ===========================================================================
 SETUP
@@ -12,8 +12,7 @@ SETUP
 1. Install required packages (run once in terminal):
      pip install streamlit ultralytics pillow numpy
 
-2. Place your trained model file "best.pt" in this same folder once ready.
-   Until then, the app runs fine but skips the detection step.
+2. Place your trained model file "best.pt" in this same folder.
 
 3. Edit SITE_CODES and CASE_TYPES below to match your real setup.
 
@@ -55,7 +54,7 @@ os.makedirs(FLAGGED_FOLDER, exist_ok=True)
 # LOAD MODEL
 # ---------------------------------------------------------------------
 
-st.set_page_config(page_title="Part Inspector", layout="centered")
+st.set_page_config(page_title="Tafe Quality Check", layout="centered")
 
 model = None
 model_error = None
@@ -106,39 +105,50 @@ if uploaded_file is not None:
             result = results[0]
             names = result.names
 
-            counts = {}
+            # Count raw detections per exact class name
+            raw_counts = {}
             for box in result.boxes:
                 raw_name = names[int(box.cls[0])]
-                upper_name = raw_name.upper()
+                raw_counts[raw_name] = raw_counts.get(raw_name, 0) + 1
 
-                if "IGNORE" in upper_name:
-                    continue  # skip irrelevant detections entirely
+            # -----------------------------------------------------
+            # BOLT logic - has an explicit "missing" class, but it
+            # always includes 1 fixed hole that isn't a real bolt
+            # position. Always subtract exactly 1 from raw missing.
+            # -----------------------------------------------------
+            bolt_present = raw_counts.get("BOLT_P", 0)
+            bolt_missing_raw = raw_counts.get("BOLT_MISSING", 0)
+            bolt_missing = max(0, bolt_missing_raw - 1)
 
-                # Determine present vs missing regardless of exact naming style
-                # (handles BOLT_Missing, NUT_Missing, BREATHER_PRESENT, BOLT_P, NUT_P, etc.)
-                if "MISSING" in upper_name or upper_name.endswith("_M"):
-                    state = "missing"
-                elif "PRESENT" in upper_name or upper_name.endswith("_P"):
-                    state = "present"
-                else:
-                    continue  # unrecognized class naming, skip safely
+            # -----------------------------------------------------
+            # NUT logic - no "missing" class trained yet, so missing
+            # is inferred by comparing present count to expected total.
+            # -----------------------------------------------------
+            nut_present = raw_counts.get("NUT_P", 0)
+            nut_missing = max(0, EXPECTED_COUNTS["nut"] - nut_present)
 
-                # Extract the part name (everything before the first underscore)
-                part = raw_name.split("_")[0].lower()
-
-                counts.setdefault(part, {"present": 0, "missing": 0})
-                counts[part][state] += 1
+            # -----------------------------------------------------
+            # BREATHER logic - same inference approach as nut.
+            # -----------------------------------------------------
+            breather_present = raw_counts.get("BREATHER_PRESENT", 0)
+            breather_missing = max(0, EXPECTED_COUNTS["breather"] - breather_present)
 
         st.subheader("Inspection Report")
-        all_ok = True
-        for part, expected_total in EXPECTED_COUNTS.items():
-            present = counts.get(part, {}).get("present", 0)
-            missing = counts.get(part, {}).get("missing", 0)
-            icon = "✅" if missing == 0 else "⚠️"
-            if missing > 0:
-                all_ok = False
-            st.write(f"{icon} **{part.capitalize()}**: {present} / {expected_total} present"
-                     + (f" — {missing} missing" if missing > 0 else ""))
+
+        bolt_expected = EXPECTED_COUNTS["bolt"]
+        icon = "✅" if bolt_missing == 0 else "⚠️"
+        st.write(f"{icon} **Bolt**: {bolt_present} / {bolt_expected} present"
+                 + (f" — {bolt_missing} missing" if bolt_missing > 0 else ""))
+
+        nut_expected = EXPECTED_COUNTS["nut"]
+        icon = "✅" if nut_missing == 0 else "⚠️"
+        st.write(f"{icon} **Nut**: {nut_present} / {nut_expected} present"
+                 + (f" — {nut_missing} missing" if nut_missing > 0 else ""))
+
+        breather_expected = EXPECTED_COUNTS["breather"]
+        icon = "✅" if breather_missing == 0 else "⚠️"
+        st.write(f"{icon} **Breather**: {breather_present} / {breather_expected} present"
+                 + (f" — {breather_missing} missing" if breather_missing > 0 else ""))
 
         annotated = result.plot()
         st.image(annotated, caption="Detected parts", use_container_width=True)
